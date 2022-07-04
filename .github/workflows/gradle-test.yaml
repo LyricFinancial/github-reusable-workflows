@@ -1,0 +1,108 @@
+name: "Test apps"
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Platform to execute on
+        required: false
+        type: string
+        default: sandbox
+      service-name:
+        required: true
+        description: Service name to test
+        type: string
+        default: '[""]'
+      java-version:
+        required: false
+        description: Version of java to use
+        type: string
+        default: 8
+      s3-report-bucket:
+        required: false
+        description: S3 report bucket name
+        type: string
+        default: 'com.lyricfinancial.drone-reports'
+      repo-owner:
+        required: false
+        description: Github repository owner
+        type: string
+        default: 'LyricFinancial'
+      
+    secrets:
+      aws-access-key-id:
+        required: true
+      aws-secret-access-key:
+        required: true
+      aws-region:
+        required: true
+
+jobs:
+  test:
+    name: "${{ matrix.SERVICE_NAME }}"
+    runs-on: ${{ inputs.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        SERVICE_NAME: ${{ fromJSON(inputs.service-name) }}
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ secrets.aws-region }}
+
+      - name: Set java version
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: ${{ inputs.java-version }}
+          cache: "gradle"
+
+      # - uses: gradle/gradle-build-action@v2
+      #   with:
+      #     gradle-version: 3.3
+
+      # Cache Gradle dependencies
+      - name: Setup Gradle Dependencies Cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-caches-${{ hashFiles('**/*.gradle', '**/*.gradle.kts') }}
+
+      # Cache Gradle Wrapper
+      - name: Setup Gradle Wrapper Cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Run Test
+        run: |
+          ${{ github.workspace }}/gradlew test \
+              -Dorg.gradle.java.home=$JAVA_HOME \
+              -Dorg.gradle.daemon=false \
+              --stacktrace \
+              --continue \
+              -PmaxParallelForks=8
+        working-directory: "${{ matrix.SERVICE_NAME }}"
+
+      - name: Prepare test results
+        if: ${{ failure() }}
+        run: ${{ github.workspace }}/gradlew zipReports
+
+      - name: Upload test results to S3
+        if: ${{ failure() }}
+        uses: hkusu/s3-upload-action@v2
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ secrets.aws-region }}
+          aws-bucket: ${{ inputs.s3-report-bucket }}/${{ inputs.repo-owner }}/${{ inputs.app-name }}/${{ github.run_number }}
+          file-path: './testResults.zip'

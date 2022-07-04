@@ -1,0 +1,92 @@
+name: "Setup vars"
+
+on:
+  workflow_call:
+    outputs:
+      commit_short_sha: 
+        value: ${{ jobs.setup.outputs.commit_short_sha }}
+      committer_name: 
+        value: ${{ jobs.setup.outputs.committer_name }}
+      committer_email: 
+        value: ${{ jobs.setup.outputs.committer_email }}
+      commit_message: 
+        value: ${{ jobs.setup.outputs.commit_message }}
+      app_name: 
+        value: ${{ jobs.setup.outputs.app_name }}
+      app_version: 
+        value: ${{ jobs.setup.outputs.app_version }}
+      build_url: 
+        value: ${{ jobs.setup.outputs.build_url }}
+      slack_webhook_url: 
+        value: ${{ jobs.setup.outputs.slack_webhook_url }}
+    inputs:
+      runs-on:
+        description: Platform to execute on
+        required: false
+        type: string
+        default: sandbox
+      java-version:
+        required: false
+        description: Version of java to use
+        type: string
+        default: 8
+
+jobs:
+  setup:
+    runs-on: ${{ inputs.runs-on }}
+    outputs:
+      commit_short_sha: ${{ steps.printvars.outputs.commit_short_sha }}
+      committer_name: ${{ steps.printvars.outputs.committer_name }}
+      committer_email: ${{ steps.printvars.outputs.committer_email }}
+      commit_message: ${{ steps.printvars.outputs.commit_message }}
+      app_name: ${{ steps.printvars.outputs.app_name }}
+      app_version: ${{ steps.printvars.outputs.app_version }}
+      build_url: ${{ steps.printvars.outputs.build_url }}
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set java version
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: ${{ inputs.java-version }}
+          cache: "gradle"
+
+      - name: "Print build vars"
+        id: printvars
+        run: |
+          # Define vars
+          commit_short_sha=$(git log --pretty=format:%h -n 1)
+          committer_name=$(git show -s --pretty=%an)
+          committer_email=$(git show -s --pretty=%ae)
+          properties="$(./gradlew properties --console=plain -q)"
+          app_version="$(echo "$properties" | grep "^version:" | cut -f2- -d ' ')"
+          app_name="$(echo "$properties" | grep "^name:" | cut -f2- -d ' ')"
+          build_url="https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+
+          # Export vars          
+          echo "::set-output name=commit_short_sha::$commit_short_sha"
+          echo "::set-output name=committer_name::$committer_name"
+          echo "::set-output name=committer_email::$committer_email"
+          echo "::set-output name=app_version::$app_version"
+          echo "::set-output name=app_name::$app_name"
+          echo "::set-output name=build_url::$build_url"
+
+          # Print vars
+          echo "Application name : ${app_name}"
+          echo "Application version : ${app_version}"
+          echo "Sources branch : ${{ github.ref_name }}"
+          echo "Commit SHA : ${{ github.sha }}"
+          echo "Commit short SHA : ${commit_short_sha}"
+          echo "Committer name : ${committer_name}"
+          echo "Committer email: ${committer_email}"
+
+          # Format commit message
+          commit_message=$(git show -s --format=%B $(git log --pretty=format:%H -n 1) | tr '\n' ' ')
+          echo "::set-output name=commit_message::$commit_message"
+
+      - name: Debug variables
+        uses: hmarr/debug-action@v2

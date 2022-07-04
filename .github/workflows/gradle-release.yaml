@@ -1,0 +1,95 @@
+name: "Release project"
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Platform to execute on
+        required: false
+        type: string
+        default: sandbox
+      java-version:
+        required: false
+        description: Version of java to use
+        type: string
+        default: 8
+      app-name:
+        required: true
+        description: Name of application
+        type: string
+        default: 'no-name'
+      repo-owner:
+        required: false
+        description: Github repository owner
+        type: string
+        default: 'LyricFinancial'
+    secrets:
+      api-access-token:
+        required: true
+      aws-access-key-id:
+        required: true
+      aws-secret-access-key:
+        required: true
+      aws-region:
+        required: true
+
+jobs:
+  release:
+    name: "Release ${{ inputs.app-name }}"
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0    
+      - name: "Git reset"
+        run: |
+          git config user.email "ci@github.com"
+          git config user.name "GithubActions"
+          git config url.https://.insteadOf git://
+          git checkout -qf ${{ github.ref_name }}
+          git reset --hard ${{ github.sha }}
+          git clean -fd
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
+          aws-region: ${{ secrets.aws-region }}
+
+      - name: Set java version
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: ${{ inputs.java-version }}
+          cache: "gradle"
+
+      # Cache Gradle dependencies
+      - name: Setup Gradle Dependencies Cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-caches-${{ hashFiles('**/*.gradle', '**/*.gradle.kts') }}
+
+      # Cache Gradle Wrapper
+      - name: Setup Gradle Wrapper Cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: "Release"
+        id: release
+        run: |
+          echo "Release package from master branch"
+          chmod +x gradlew
+          ${{ github.workspace }}/gradlew release \
+            -x test \
+            -Dorg.gradle.java.home=$JAVA_HOME \
+            -Pgroup=com.github.${{ inputs.repo-owner }}.${{ inputs.app-name }} \
+            -Pvendor=${{ inputs.repo-owner }} -Pbuild=${{ github.sha }} \
+            -Dorg.ajoberstar.grgit.auth.username=${{ secrets.api-access-token }} \
+            -Dorg.ajoberstar.grgit.auth.password \
+            -Dorg.gradle.daemon=false \
+            --stacktrace

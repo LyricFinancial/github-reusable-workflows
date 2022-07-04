@@ -1,0 +1,105 @@
+name: "Slack start notify"
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Platform to execute on
+        required: false
+        type: string
+        default: sandbox
+      environment:
+        required: false
+        description: Environment
+        type: string
+        default: ci
+      app-name:
+        required: true
+        description: Name of application
+        type: string
+        default: 'no-name'
+      app-version:
+        required: true
+        description: Application version
+        type: string
+        default: 1.0.0
+      build-url:
+        required: true
+        description: Build URL
+        type: string
+      commit_short_sha:
+        required: true
+        description: Git short commit SHA
+        type: string
+      committer_name:
+        required: true
+        description: Git commiter name
+        type: string
+      commit_message:
+        required: true
+        description: Git commit message
+        type: string
+    secrets:
+      slack_webhook_url:
+        required: true
+
+jobs:
+  notify:
+    name: "Send workflow status to Slack"
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+    - name: "Send Start status"
+      id: slack
+      uses: slackapi/slack-github-action@v1.19.0
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.slack_webhook_url }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+      with:
+        payload: |
+          { 
+            "blocks": [
+              {
+                "type": "section",
+                "fields": [
+                  {
+                  "type": "mrkdwn",
+                  "text": "Workflow *${{ inputs.app-name }}* build started from branch `${{ github.ref_name }}`"
+                  }
+                ]  
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "AppVersion: *${{ inputs.app-version }}*"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "Environment: *${{ inputs.environment }}*"
+                  }, 
+                  {
+                    "type": "mrkdwn",
+                    "text": "Commit SHA: *${{ inputs.commit_short_sha }}*"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "Committer: *${{ inputs.committer_name }}*"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "Description: *${{ inputs.commit_message }}*"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "<${{ inputs.build-url }}|Workflow logs> :speech_balloon:"
+                  }
+                ]
+              }
+            ]
+          }

@@ -1,0 +1,62 @@
+name: "Publish project"
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Platform to execute on
+        required: false
+        type: string
+        default: sandbox
+      app-name:
+        required: true
+        description: Name of application
+        type: string
+        default: 'no-name'
+      app-version:
+        required: true
+        description: Application version
+        type: string
+        default: 1.0.0
+    secrets:
+      slack_webhook_url:
+        required: true
+
+jobs:
+  notify:
+    name: "Send workflow status to Slack"
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: "Build Success status"
+        uses: slackapi/slack-github-action@v1.19.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.slack_webhook_url }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          payload: |
+            { 
+              "blocks": [
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                    "type": "mrkdwn",
+                    "text": "Workflow *${{ inputs.app-name }} package build* : build succeed from `${{ github.ref_name }}`"
+                    },
+                    {
+                    "type": "mrkdwn",
+                    "text": "Assembled package name: `${{ inputs.app-version }}`"
+                    }
+                  ]  
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "`Status` : *Success* :heavy_check_mark:"
+                    }
+                  ]
+                }
+              ]
+            }
