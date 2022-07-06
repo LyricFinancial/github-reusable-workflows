@@ -1,4 +1,4 @@
-name: "Publish project"
+name: "Slack fail notify"
 
 on:
   workflow_call:
@@ -29,7 +29,7 @@ on:
 
 jobs:
   notify:
-    name: "Send workflow status to Slack"
+    # name: "Send workflow status to Slack"
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: "Build Failure status"
